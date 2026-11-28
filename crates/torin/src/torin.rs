@@ -1,6 +1,7 @@
 use alloc::vec::Vec;
 use core::mem;
 
+use hashbrown::hash_map::Entry;
 use itertools::Itertools;
 
 use crate::{
@@ -417,7 +418,7 @@ impl<Key: NodeKey> Torin<Key> {
                     // Adjust the size of the area if needed
                     root_layout_node.area.adjust_size(root);
 
-                    measure_context.layout.cache_node(root_id, root_layout_node);
+                    measure_context.cache_node(root_id, root_layout_node);
                 }
             })
             .expect("Root node does not exist");
@@ -436,5 +437,21 @@ impl<Key: NodeKey> Torin<Key> {
     /// Cache a Node's [LayoutNode]
     pub fn cache_node(&mut self, node_id: Key, layout_node: LayoutNode) {
         self.results.insert(node_id, layout_node);
+    }
+
+    /// Read the previous value, if any, before caching the new layout node.
+    pub(crate) fn cache_node_with_reader(
+        &mut self,
+        node_id: Key,
+        layout_node: LayoutNode,
+        reader: impl FnOnce(Option<&LayoutNode>, &LayoutNode),
+    ) {
+        let entry = self.results.entry(node_id);
+        let previous = match &entry {
+            Entry::Occupied(entry) => Some(entry.get()),
+            Entry::Vacant(_) => None,
+        };
+        reader(previous, &layout_node);
+        entry.insert(layout_node);
     }
 }

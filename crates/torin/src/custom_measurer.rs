@@ -66,6 +66,9 @@ pub trait LayoutMeasurer<Key: NodeKey> {
         PostMeasure::default()
     }
 
+    /// Notifies the caller when a node's cached bounds change.
+    fn bounds_changed(&mut self, _node_id: Key) {}
+
     fn notify_layout_references(
         &mut self,
         _node_id: Key,

@@ -220,6 +220,49 @@ fn keyed_sibling_reorders_update_accessibility_children() {
     }
 }
 
+#[test]
+fn accessibility_bounds_follow_scroll_offset() {
+    let (mut test, mut offset) = TestingRunner::new(
+        || {
+            let offset = use_consume::<State<f32>>();
+            rect()
+                .height(Size::px(100.))
+                .overflow(Overflow::Clip)
+                .child(
+                    rect().offset_y(offset()).child(
+                        rect().height(Size::px(20.)).child(
+                            rect()
+                                .width(Size::px(60.))
+                                .height(Size::px(20.))
+                                .a11y_id(AccessibilityId(100))
+                                .a11y_role(AccessibilityRole::Button),
+                        ),
+                    ),
+                )
+        },
+        (300., 300.).into(),
+        |runner| runner.provide_root_context(|| State::create(0.0f32)),
+        1.,
+    );
+    let find_bounds = |update: accesskit::TreeUpdate| {
+        update
+            .nodes
+            .into_iter()
+            .find(|(id, _)| *id == AccessibilityId(100))
+            .unwrap()
+            .1
+            .bounds()
+            .unwrap()
+    };
+    offset.set(-5.);
+    let before = find_bounds(test.sync_and_update());
+    offset.set(-15.);
+    let after = find_bounds(test.sync_and_update());
+    assert_eq!(after.y0, before.y0 - 10.);
+    assert_eq!(after.y1, before.y1 - 10.);
+    assert_eq!(after.width(), before.width());
+}
+
 fn action_request(
     action: AccessibilityAction,
     target_node: AccessibilityId,

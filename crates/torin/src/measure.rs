@@ -65,6 +65,19 @@ where
     L: LayoutMeasurer<Key>,
     D: TreeAdapter<Key>,
 {
+    pub(crate) fn cache_node(&mut self, node_id: Key, layout_node: LayoutNode) {
+        if let Some(measurer) = self.measurer {
+            self.layout
+                .cache_node_with_reader(node_id, layout_node, |previous, next| {
+                    if previous.is_none_or(|previous| previous.area != next.area) {
+                        measurer.bounds_changed(node_id);
+                    }
+                });
+        } else {
+            self.layout.cache_node(node_id, layout_node);
+        }
+    }
+
     /// Translate a single Node's cached areas by the given offset, notifying layout references.
     fn translate_node(&mut self, node_id: Key, offset_x: Length, offset_y: Length) {
         let Some((area, visible_area, inner_sizes)) =
@@ -83,13 +96,17 @@ where
             return;
         };
 
-        if self
-            .tree_adapter
-            .read_node(&node_id, |node, _| node.has_layout_references)
-            .unwrap_or(false)
-            && let Some(measurer) = self.measurer
-        {
-            measurer.notify_layout_references(node_id, area, visible_area, inner_sizes);
+        if let Some(measurer) = self.measurer {
+            if offset_x.get() != 0. || offset_y.get() != 0. {
+                measurer.bounds_changed(node_id);
+            }
+            if self
+                .tree_adapter
+                .read_node(&node_id, |node, _| node.has_layout_references)
+                .unwrap_or(false)
+            {
+                measurer.notify_layout_references(node_id, area, visible_area, inner_sizes);
+            }
         }
     }
 
@@ -983,7 +1000,7 @@ where
                     // Cache the child layout if it was mutated and children must be cached
                     if child_revalidated && must_cache_children {
                         // Finally cache this node areas into Torin
-                        self.layout.cache_node(child_id, child_areas);
+                        self.cache_node(child_id, child_areas);
                     }
                 });
         }
