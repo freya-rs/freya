@@ -1,11 +1,13 @@
 use alloc::vec::Vec;
 use core::mem;
 
-use hashbrown::hash_map::Entry;
 use itertools::Itertools;
 
 use crate::{
-    collections::FxHashMap,
+    collections::{
+        Entry,
+        FxHashMap,
+    },
     custom_measurer::LayoutMeasurer,
     geometry::Area,
     measure::{
@@ -446,12 +448,15 @@ impl<Key: NodeKey> Torin<Key> {
         layout_node: LayoutNode,
         reader: impl FnOnce(Option<&LayoutNode>, &LayoutNode),
     ) {
-        let entry = self.results.entry(node_id);
-        let previous = match &entry {
-            Entry::Occupied(entry) => Some(entry.get()),
-            Entry::Vacant(_) => None,
-        };
-        reader(previous, &layout_node);
-        entry.insert(layout_node);
+        match self.results.entry(node_id) {
+            Entry::Occupied(mut entry) => {
+                reader(Some(entry.get()), &layout_node);
+                entry.insert(layout_node);
+            }
+            Entry::Vacant(entry) => {
+                reader(None, &layout_node);
+                entry.insert(layout_node);
+            }
+        }
     }
 }

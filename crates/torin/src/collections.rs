@@ -7,6 +7,12 @@ pub use std::{
 #[cfg(feature = "std")]
 pub use rustc_hash::FxHashMap;
 
+#[cfg(feature = "std")]
+pub(crate) use std::collections::hash_map::Entry;
+
+#[cfg(not(feature = "std"))]
+pub(crate) use hashbrown::hash_map::Entry;
+
 #[cfg(not(feature = "std"))]
 pub type FxHashMap<Key, Value> = hashbrown::HashMap<Key, Value, rustc_hash::FxBuildHasher>;
 
