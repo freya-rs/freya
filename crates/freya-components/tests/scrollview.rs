@@ -155,6 +155,10 @@ fn nested_scroll_drag_ownership() {
             assert_eq!(position(&test, page), (0, page_start));
             assert_eq!(position(&test, inner), (0, inner_start));
 
+            let past_slop = |moved: f64, step: i32| {
+                let moved = moved as i32 * step;
+                moved.signum() * (moved.abs() - 8).max(0)
+            };
             let press = (400., 350. - page_start as f64);
             test.press_touch(press);
             for step in 1..=3 {
@@ -165,9 +169,9 @@ fn nested_scroll_drag_ownership() {
                 let expected_inner = if !inner_scrolls {
                     (0, inner_start)
                 } else if direction == Direction::Horizontal {
-                    (-movement.0 as i32 * step, inner_start)
+                    (-past_slop(movement.0, step), inner_start)
                 } else {
-                    (0, inner_start - movement.1 as i32 * step)
+                    (0, inner_start - past_slop(movement.1, step))
                 };
                 assert_eq!(position(&test, inner), expected_inner);
                 assert_eq!(
@@ -178,7 +182,7 @@ fn nested_scroll_drag_ownership() {
                             - if inner_scrolls {
                                 0
                             } else {
-                                movement.1 as i32 * step
+                                past_slop(movement.1, step)
                             }
                     )
                 );
@@ -200,7 +204,7 @@ fn nested_scroll_drag_ownership() {
             assert_eq!(position(&test, page).0, page_before.0);
             test.move_touch((370., 420.));
             assert_eq!(position(&test, inner), inner_before);
-            assert_eq!(position(&test, page).1, page_before.1 + 30);
+            assert_eq!(position(&test, page).1, page_before.1 + 30 - 8);
             test.release_touch((370., 420.));
         }
     }
