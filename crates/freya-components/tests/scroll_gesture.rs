@@ -133,3 +133,59 @@ fn other_platforms_keep_direct_pixel_scrolling() {
         }
     }
 }
+
+fn touch(test: &mut TestingRunner, name: TouchEventName, finger_id: u64, location: (f64, f64)) {
+    let phase = match name {
+        TouchEventName::TouchStart => TouchPhase::Started,
+        TouchEventName::TouchMove => TouchPhase::Moved,
+        TouchEventName::TouchEnd => TouchPhase::Ended,
+        TouchEventName::TouchCancel => TouchPhase::Cancelled,
+    };
+    test.send_event(PlatformEvent::Touch {
+        name,
+        location: location.into(),
+        finger_id,
+        phase,
+        force: None,
+    });
+}
+
+#[test]
+fn touch_drag_keeps_batched_moves() {
+    for virtualized in [false, true] {
+        let (mut test, controller) = setup(virtualized, TargetPlatform::Android);
+        test.press_touch((100., 400.));
+        test.move_touch((100., 350.));
+        let dragged = position(&test, controller).1;
+
+        // Moves delivered together, before the view renders again.
+        for y in [340., 330., 320.] {
+            touch(&mut test, TouchEventName::TouchMove, 0, (100., y));
+        }
+        test.sync_and_update();
+        assert_eq!(position(&test, controller).1, dragged + 30.);
+
+        // The fling starts where the drag is, even if the last move was not rendered.
+        touch(&mut test, TouchEventName::TouchMove, 0, (100., 310.));
+        touch(&mut test, TouchEventName::TouchEnd, 0, (100., 310.));
+        test.sync_and_update();
+        let (rendered, target) = position(&test, controller);
+        assert_eq!(rendered, dragged + 40.);
+        assert!(target > rendered);
+    }
+}
+
+#[test]
+fn touch_drag_held_still_does_not_fling() {
+    for virtualized in [false, true] {
+        let (mut test, controller) = setup(virtualized, TargetPlatform::Android);
+        test.press_touch((100., 400.));
+        for step in 1..=3 {
+            test.move_touch((100., 400. - step as f64 * 20.));
+        }
+        let held = position(&test, controller);
+        test.poll(Duration::from_millis(8), Duration::from_millis(150));
+        test.release_touch((100., 340.));
+        assert_eq!(position(&test, controller), held);
+    }
+}

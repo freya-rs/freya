@@ -510,10 +510,13 @@ impl<D: PartialEq + 'static, B: Fn(VirtualItem, &D) -> Element + 'static> Compon
 
         let smooth_position = scroll_controller
             .animated_position(ScrollPoint::new(corrected_scrolled_x, corrected_scrolled_y));
-        let rendered_position = ScrollPoint::new(
-            get_corrected_scroll_position(inner_width, viewport_width, smooth_position.x),
-            get_corrected_scroll_position(inner_height, viewport_height, smooth_position.y),
-        );
+        let corrected_position = move |position: ScrollPoint| {
+            ScrollPoint::new(
+                get_corrected_scroll_position(inner_width, viewport_width, position.x),
+                get_corrected_scroll_position(inner_height, viewport_height, position.y),
+            )
+        };
+        let rendered_position = corrected_position(smooth_position);
 
         let horizontal_scrollbar_is_visible =
             is_scrollbar_visible(self.show_scrollbar, inner_width, viewport_width);
@@ -542,7 +545,7 @@ impl<D: PartialEq + 'static, B: Fn(VirtualItem, &D) -> Element + 'static> Compon
                 e.prevent_default();
                 let content = ScrollSize::new(inner_width, inner_height);
                 scroll_controller.release_drag(
-                    rendered_position,
+                    corrected_position(scroll_controller.position()),
                     content,
                     size.read().area.size.to_f64(),
                 );
@@ -626,8 +629,9 @@ impl<D: PartialEq + 'static, B: Fn(VirtualItem, &D) -> Element + 'static> Compon
         let on_capture_global_pointer_move = move |e: Event<PointerEventData>| {
             if drag_scrolling && let Some(delta) = touch_drag.movement(e.global_location()) {
                 scroll_controller.drag(delta);
-                scroll_controller.scroll_to_y(rendered_position.y + delta.y);
-                scroll_controller.scroll_to_x(rendered_position.x + delta.x);
+                let position = corrected_position(scroll_controller.position());
+                scroll_controller.scroll_to_y(position.y + delta.y);
+                scroll_controller.scroll_to_x(position.x + delta.x);
 
                 e.prevent_default();
                 timeout.reset();
