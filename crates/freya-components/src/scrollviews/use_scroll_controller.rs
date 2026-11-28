@@ -451,9 +451,7 @@ impl ScrollController {
             TouchPhase::Moved => self.drag.write().track(-delta),
             TouchPhase::Ended => {
                 let bounds = *self.bounds.peek();
-                if self.drag.peek().last_move.elapsed() < FLING_RELEASE_TIMEOUT
-                    && let Some((content, viewport)) = bounds
-                {
+                if let Some((content, viewport)) = bounds {
                     self.release_drag(self.animated_position(self.position()), content, viewport);
                 }
                 self.drag.set(Drag::default());
@@ -483,10 +481,12 @@ impl ScrollController {
         self.drag.write().track(delta);
     }
 
-    /// Ends a drag, flinging when it was fast enough to be a flick.
+    /// Ends a drag, flinging when it was fast enough to be a flick and still moving.
     pub fn release_drag(&mut self, from: ScrollPoint, content: ScrollSize, viewport: ScrollSize) {
-        let velocity = self.drag.peek().velocity;
-        if velocity.length() < FLING_MIN_SPEED {
+        let drag = *self.drag.peek();
+        let velocity = drag.velocity;
+        if velocity.length() < FLING_MIN_SPEED || drag.last_move.elapsed() >= FLING_RELEASE_TIMEOUT
+        {
             return;
         }
 
