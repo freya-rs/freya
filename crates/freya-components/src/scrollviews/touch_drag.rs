@@ -20,6 +20,8 @@ struct Candidate {
 #[derive(Clone, PartialEq)]
 struct Gesture {
     origin: CursorPoint,
+    // The finger that started the touch, other fingers are ignored.
+    finger: u64,
     // Inner scroll views come first.
     candidates: Vec<Candidate>,
     owner: Option<AccessibilityId>,
@@ -94,7 +96,9 @@ pub struct TouchDrag {
 
 /// Track touch scrolling with the scroll view's accessibility ID.
 pub fn use_touch_drag(id: AccessibilityId) -> TouchDrag {
-    use_hook(|| TouchDrag::create(id))
+    let touch_drag = use_hook(|| TouchDrag::create(id));
+    use_drop(move || touch_drag.remove());
+    touch_drag
 }
 
 impl TouchDrag {
@@ -115,21 +119,30 @@ impl TouchDrag {
     }
 
     /// Start a touch using the scroll position and sizes to check where this view can scroll.
+    /// Returns whether the touch was accepted, touches from other fingers than the one already
+    /// touching are ignored.
     pub fn press(
         &mut self,
-        origin: CursorPoint,
+        data: &PointerEventData,
         position: ScrollPoint,
         content: ScrollSize,
         viewport: ScrollSize,
-    ) {
-        let joined = self
-            .gesture
-            .peek()
+    ) -> bool {
+        let PointerEventData::Touch(touch) = data else {
+            return false;
+        };
+        let origin = touch.global_location;
+        let current = self.gesture.peek().clone();
+        if current
             .as_ref()
-            .filter(|gesture| gesture.owner.is_none() && gesture.origin == origin)
-            .cloned();
+            .is_some_and(|gesture| gesture.finger != touch.finger_id)
+        {
+            return false;
+        }
+        let joined = current.filter(|gesture| gesture.owner.is_none() && gesture.origin == origin);
         let mut gesture = joined.unwrap_or(Gesture {
             origin,
+            finger: touch.finger_id,
             candidates: Vec::new(),
             owner: None,
         });
@@ -143,15 +156,20 @@ impl TouchDrag {
         }
         self.gesture.set_if_modified(Some(gesture));
         self.last.set_if_modified(None);
+        true
     }
 
     /// Return how far to scroll, or `None` if this view does not have the drag.
-    pub fn movement(&mut self, coords: CursorPoint) -> Option<ScrollVector> {
+    pub fn movement(&mut self, data: &PointerEventData) -> Option<ScrollVector> {
+        let PointerEventData::Touch(touch) = data else {
+            return None;
+        };
+        let coords = touch.global_location;
         let (origin, owner) = {
             let mut gesture = self.gesture.write();
             let gesture = gesture
                 .as_mut()
-                .filter(|gesture| gesture.includes(self.id))?;
+                .filter(|gesture| gesture.finger == touch.finger_id && gesture.includes(self.id))?;
             let owner = match gesture.owner {
                 Some(owner) => owner,
                 None => {
@@ -172,19 +190,49 @@ impl TouchDrag {
     }
 
     /// End the touch and return whether this view had the drag.
-    pub fn release(&mut self) -> bool {
+    pub fn release(&mut self, data: &PointerEventData) -> bool {
+        let PointerEventData::Touch(touch) = data else {
+            return false;
+        };
         let (was_dragged, ends_gesture) = match self.gesture.peek().as_ref() {
-            Some(gesture) if gesture.includes(self.id) => {
+            Some(gesture) if gesture.finger == touch.finger_id && gesture.includes(self.id) => {
                 let was_dragged = gesture.owner == Some(self.id);
                 // The view with the drag clears it. Other views may not receive the release.
                 (was_dragged, was_dragged || gesture.owner.is_none())
             }
-            _ => (false, false),
+            _ => return false,
         };
         if ends_gesture {
             self.gesture.set_if_modified(None);
         }
         self.last.set_if_modified(None);
         was_dragged
+    }
+
+    /// End the touch without a release, like when the system cancels it.
+    pub fn cancel(&mut self, touch: &TouchEventData) {
+        let cancelled = self
+            .gesture
+            .peek()
+            .as_ref()
+            .is_some_and(|gesture| gesture.finger == touch.finger_id);
+        if cancelled {
+            self.gesture.set_if_modified(None);
+            self.last.set_if_modified(None);
+        }
+    }
+
+    /// Leave the touch when this view is removed, so it does not keep a drag no one can end.
+    fn remove(mut self) {
+        let mut gesture = self.gesture.peek().clone();
+        if let Some(current) = gesture.as_mut() {
+            current
+                .candidates
+                .retain(|candidate| candidate.id != self.id);
+            if current.owner == Some(self.id) || current.candidates.is_empty() {
+                gesture = None;
+            }
+        }
+        self.gesture.set_if_modified(gesture);
     }
 }

@@ -538,7 +538,7 @@ impl<D: PartialEq + 'static, B: Fn(VirtualItem, &D) -> Element + 'static> Compon
                 clicking_scrollbar.set_if_modified(None);
             }
 
-            if touch_drag.release() && drag_scrolling {
+            if touch_drag.release(e.data()) && drag_scrolling {
                 e.prevent_default();
                 let content = ScrollSize::new(inner_width, inner_height);
                 scroll_controller.release_drag(
@@ -624,7 +624,7 @@ impl<D: PartialEq + 'static, B: Fn(VirtualItem, &D) -> Element + 'static> Compon
         };
 
         let on_capture_global_pointer_move = move |e: Event<PointerEventData>| {
-            if drag_scrolling && let Some(delta) = touch_drag.movement(e.global_location()) {
+            if drag_scrolling && let Some(delta) = touch_drag.movement(e.data()) {
                 scroll_controller.drag(delta);
                 scroll_controller.scroll_to_y(rendered_position.y + delta.y);
                 scroll_controller.scroll_to_x(rendered_position.x + delta.x);
@@ -730,14 +730,15 @@ impl<D: PartialEq + 'static, B: Fn(VirtualItem, &D) -> Element + 'static> Compon
         };
 
         let on_pointer_down = move |e: Event<PointerEventData>| {
-            if drag_scrolling && matches!(e.data(), PointerEventData::Touch(_)) {
-                scroll_controller.begin_drag();
-                touch_drag.press(
-                    e.global_location(),
+            if drag_scrolling
+                && touch_drag.press(
+                    e.data(),
                     rendered_position,
                     (inner_width, inner_height).into(),
                     (viewport_width, viewport_height).into(),
-                );
+                )
+            {
+                scroll_controller.begin_drag();
             }
         };
 
@@ -763,6 +764,7 @@ impl<D: PartialEq + 'static, B: Fn(VirtualItem, &D) -> Element + 'static> Compon
             .on_global_key_up(on_global_key_up)
             .on_global_key_down(on_global_key_down)
             .on_pointer_down(on_pointer_down)
+            .on_touch_cancel(move |e: Event<TouchEventData>| touch_drag.cancel(&e))
             .child(
                 rect()
                     .width(container_width)

@@ -287,7 +287,7 @@ impl Component for ScrollView {
                 clicking_scrollbar.set_if_modified(None);
             }
 
-            if touch_drag.release() && drag_scrolling {
+            if touch_drag.release(e.data()) && drag_scrolling {
                 e.prevent_default();
                 let content = size.read().inner_sizes.to_f64();
                 let viewport = size.read().area.size.to_f64();
@@ -370,7 +370,7 @@ impl Component for ScrollView {
         };
 
         let on_capture_global_pointer_move = move |e: Event<PointerEventData>| {
-            if drag_scrolling && let Some(delta) = touch_drag.movement(e.global_location()) {
+            if drag_scrolling && let Some(delta) = touch_drag.movement(e.data()) {
                 scroll_controller.drag(delta);
                 scroll_controller.scroll_to_y(rendered_position.y + delta.y);
                 scroll_controller.scroll_to_x(rendered_position.x + delta.x);
@@ -454,15 +454,15 @@ impl Component for ScrollView {
         };
 
         let on_pointer_down = move |e: Event<PointerEventData>| {
-            if drag_scrolling && matches!(e.data(), PointerEventData::Touch(_)) {
-                scroll_controller.begin_drag();
-                let size = size.read();
-                touch_drag.press(
-                    e.global_location(),
+            if drag_scrolling
+                && touch_drag.press(
+                    e.data(),
                     rendered_position,
-                    size.inner_sizes.to_f64(),
-                    size.area.size.to_f64(),
-                );
+                    size.read().inner_sizes.to_f64(),
+                    size.read().area.size.to_f64(),
+                )
+            {
+                scroll_controller.begin_drag();
             }
         };
 
@@ -487,6 +487,7 @@ impl Component for ScrollView {
             .on_global_key_up(on_global_key_up)
             .on_global_key_down(on_global_key_down)
             .on_pointer_down(on_pointer_down)
+            .on_touch_cancel(move |e: Event<TouchEventData>| touch_drag.cancel(&e))
             .child(
                 rect()
                     .width(container_width)
