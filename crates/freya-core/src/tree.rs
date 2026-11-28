@@ -729,6 +729,7 @@ impl Tree {
             scale_factor,
             fallback_fonts,
             text_cache: &mut self.text_cache,
+            accessibility_diff: &mut self.accessibility_diff,
         };
 
         self.layout.find_best_root(&tree_adapter);
@@ -877,9 +878,14 @@ pub struct LayoutMeasurerAdapter<'a> {
     scale_factor: f64,
     fallback_fonts: &'a [Cow<'static, str>],
     text_cache: &'a mut TextCache,
+    accessibility_diff: &'a mut AccessibilityDirtyNodes,
 }
 
 impl LayoutMeasurer<NodeId> for LayoutMeasurerAdapter<'_> {
+    fn bounds_changed(&mut self, node_id: NodeId) {
+        self.accessibility_diff.add_or_update(node_id);
+    }
+
     fn measure(
         &mut self,
         node_id: NodeId,

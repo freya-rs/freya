@@ -1,9 +1,13 @@
 #[cfg(feature = "std")]
+pub(crate) use std::collections::hash_map::Entry;
+#[cfg(feature = "std")]
 pub use std::{
     collections::HashMap,
     hash::DefaultHasher,
 };
 
+#[cfg(not(feature = "std"))]
+pub(crate) use hashbrown::hash_map::Entry;
 #[cfg(feature = "std")]
 pub use rustc_hash::FxHashMap;
 
