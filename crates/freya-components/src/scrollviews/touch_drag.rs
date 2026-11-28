@@ -7,7 +7,8 @@ use crate::scrollviews::{
     ScrollVector,
 };
 
-const DRAG_THRESHOLD: f64 = 2.0;
+/// Logical pixels a touch moves before it drags, Android's touch slop, so taps can wobble.
+const DRAG_THRESHOLD: f64 = 8.0;
 
 #[derive(Clone, Copy, PartialEq)]
 struct Candidate {
@@ -166,7 +167,12 @@ impl TouchDrag {
             return None;
         }
 
-        let from = self.last.peek().unwrap_or(origin);
+        // Start from the slop so the content does not jump.
+        let slop = ScrollVector::splat(DRAG_THRESHOLD);
+        let from = self
+            .last
+            .peek()
+            .unwrap_or_else(|| origin + (coords - origin).clamp(-slop, slop));
         self.last.set_if_modified(Some(coords));
         Some(from - coords)
     }

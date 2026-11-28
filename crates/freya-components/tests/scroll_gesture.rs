@@ -133,3 +133,65 @@ fn other_platforms_keep_direct_pixel_scrolling() {
         }
     }
 }
+
+fn setup_buttons(virtualized: bool) -> (TestingRunner, State<usize>, ScrollController) {
+    let (mut test, (presses, controller)) = TestingRunner::new(
+        move || {
+            let mut presses = use_consume::<State<usize>>();
+            let controller = use_consume::<ScrollController>();
+            let button = move |index| {
+                Button::new()
+                    .key(index)
+                    .height(Size::px(150.))
+                    .on_press(move |_| *presses.write() += 1)
+                    .child(format!("Button {index}"))
+                    .into_element()
+            };
+            if virtualized {
+                VirtualScrollView::new_controlled(move |item, _| button(item.index), controller)
+                    .length(20usize)
+                    .item_size(150.)
+                    .into_element()
+            } else {
+                ScrollView::new_controlled(controller)
+                    .children((0..20).map(button))
+                    .into_element()
+            }
+        },
+        (500., 500.).into(),
+        |runner| {
+            runner.provide_root_context(|| TargetPlatform::Android);
+            let presses = runner.provide_root_context(|| State::create(0usize));
+            let controller = runner.provide_root_context(|| ScrollController::new(0., 0.));
+            (presses, controller)
+        },
+        1.,
+    );
+    test.sync_and_update();
+    (test, presses, controller)
+}
+
+#[test]
+fn touch_tap_wobble_presses_without_scrolling() {
+    for virtualized in [false, true] {
+        let (mut test, presses, controller) = setup_buttons(virtualized);
+        test.press_touch((40., 75.));
+        test.move_touch((42., 70.));
+        test.release_touch((42., 70.));
+        assert_eq!(*presses.peek(), 1);
+        assert_eq!(position(&test, controller), (0., 0.));
+    }
+}
+
+#[test]
+fn touch_drag_starts_from_the_slop() {
+    for virtualized in [false, true] {
+        let (mut test, controller) = setup(virtualized, TargetPlatform::Android);
+        test.press_touch((100., 250.));
+        test.move_touch((100., 240.));
+        assert_eq!(position(&test, controller).1, 2.);
+        test.move_touch((100., 200.));
+        assert_eq!(position(&test, controller).1, 42.);
+        test.release_touch((100., 200.));
+    }
+}
