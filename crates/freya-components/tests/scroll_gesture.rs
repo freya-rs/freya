@@ -133,3 +133,107 @@ fn other_platforms_keep_direct_pixel_scrolling() {
         }
     }
 }
+
+fn touch(test: &mut TestingRunner, name: TouchEventName, finger_id: u64, location: (f64, f64)) {
+    let phase = match name {
+        TouchEventName::TouchStart => TouchPhase::Started,
+        TouchEventName::TouchMove => TouchPhase::Moved,
+        TouchEventName::TouchEnd => TouchPhase::Ended,
+        TouchEventName::TouchCancel => TouchPhase::Cancelled,
+    };
+    test.send_event(PlatformEvent::Touch {
+        name,
+        location: location.into(),
+        finger_id,
+        phase,
+        force: None,
+    });
+}
+
+#[test]
+fn touch_drag_follows_its_finger() {
+    for virtualized in [false, true] {
+        let (mut test, controller) = setup(virtualized, TargetPlatform::Android);
+        test.press_touch((100., 400.));
+        test.move_touch((100., 350.));
+        let dragged = position(&test, controller).1;
+        assert!(dragged > 0.);
+
+        // A second finger neither moves the content nor ends the drag.
+        touch(&mut test, TouchEventName::TouchStart, 1, (100., 300.));
+        test.sync_and_update();
+        touch(&mut test, TouchEventName::TouchMove, 1, (100., 200.));
+        test.sync_and_update();
+        assert_eq!(position(&test, controller), (dragged, dragged));
+        touch(&mut test, TouchEventName::TouchEnd, 1, (100., 200.));
+        test.sync_and_update();
+        assert_eq!(position(&test, controller), (dragged, dragged));
+
+        test.move_touch((100., 300.));
+        assert_eq!(position(&test, controller).1, dragged + 50.);
+
+        // The same finger pressing again restarts the drag, a cancelled touch has no release.
+        test.press_touch((100., 400.));
+        test.move_touch((100., 350.));
+        let restarted = position(&test, controller).1;
+        test.move_touch((100., 330.));
+        assert_eq!(position(&test, controller).1, restarted + 20.);
+
+        // After a cancel, another finger can drag.
+        touch(&mut test, TouchEventName::TouchCancel, 0, (100., 330.));
+        test.sync_and_update();
+        touch(&mut test, TouchEventName::TouchStart, 1, (100., 400.));
+        test.sync_and_update();
+        touch(&mut test, TouchEventName::TouchMove, 1, (100., 350.));
+        test.sync_and_update();
+        let other = position(&test, controller).1;
+        touch(&mut test, TouchEventName::TouchMove, 1, (100., 330.));
+        test.sync_and_update();
+        assert_eq!(position(&test, controller).1, other + 20.);
+        touch(&mut test, TouchEventName::TouchEnd, 1, (100., 330.));
+        test.sync_and_update();
+    }
+}
+
+#[test]
+fn touch_drag_ends_when_its_view_is_removed() {
+    let (mut test, (mut show_inner, page)) = TestingRunner::new(
+        || {
+            let (show_inner, page) = use_consume::<(State<bool>, ScrollController)>();
+            ScrollView::new_controlled(page)
+                .child(rect().height(Size::px(100.)))
+                .maybe_child(show_inner().then(|| {
+                    ScrollView::new()
+                        .horizontal()
+                        .height(Size::px(100.))
+                        .child(rect().width(Size::px(1500.)).height(Size::px(100.)))
+                }))
+                .child(rect().height(Size::px(5000.)))
+                .into_element()
+        },
+        (500., 500.).into(),
+        |runner| {
+            runner.provide_root_context(|| TargetPlatform::Android);
+            runner.provide_root_context(|| (State::create(true), ScrollController::new(0., 0.)))
+        },
+        1.,
+    );
+    test.sync_and_update();
+
+    test.press_touch((100., 150.));
+    test.move_touch((50., 150.));
+    *show_inner.write() = false;
+    test.sync_and_update();
+    test.release_touch((100., 150.));
+
+    touch(&mut test, TouchEventName::TouchStart, 1, (100., 400.));
+    test.sync_and_update();
+    touch(&mut test, TouchEventName::TouchMove, 1, (100., 350.));
+    test.sync_and_update();
+    let dragged = position(&test, page).1;
+    touch(&mut test, TouchEventName::TouchMove, 1, (100., 330.));
+    test.sync_and_update();
+    assert_eq!(position(&test, page).1, dragged + 20.);
+    touch(&mut test, TouchEventName::TouchEnd, 1, (100., 330.));
+    test.sync_and_update();
+}
